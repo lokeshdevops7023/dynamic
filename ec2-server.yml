@@ -1,0 +1,79 @@
+---
+# tasks file for ec2-spin-up
+
+      - name: Create New security group with below given name
+        local_action:
+          module: ec2_group
+          name: "{{ security_group }}"
+          description: Security Group for Newly Created EC2 Instance
+          region: "{{ region }}"
+          rules:
+            - proto: tcp
+              from_port: 22
+              to_port: 22
+              cidr_ip: 0.0.0.0/0
+            - proto: tcp
+              from_port: 80
+              to_port: 80
+              cidr_ip: 0.0.0.0/0
+          rules_egress:
+            - proto: all
+              cidr_ip: 0.0.0.0/0
+
+
+      - name: Launch the new t2 micro EC2 Instance
+        local_action: ec2
+                      group={{ security_group }}
+                      instance_type={{ instance_type}}
+                      image={{ image }}
+                      wait=true
+                      region={{ region }}
+                      keypair={{ keypair }}
+                      count={{count}}
+        register: ec2
+
+      - name: Wait for EC2 Instance to Spin-up and ready for SSH access
+        local_action: wait_for
+                      host={{ item.public_ip }}
+                      port=22
+                      state=started
+        with_items: "{{ ec2.instances }}"
+
+      - name: Adding Tags to Identify
+        local_action: ec2_tag resource={{ item.id }} region={{ region }} state=present
+        with_items: "{{ ec2.instances }}"
+        args:
+          tags:
+            Name: Test-Server
+            Owner: lokeshSai
+            PurPose: Testing EC2 Instance From Ansible
+      
+
+      - name: local host web application |  
+        local_action: 
+        module: ec2 
+        region: us-east-2
+        group : webservers 
+        keypair: AnsibleTowerTest
+        instance_type: t2.micro
+        user_data: |  
+                               #!/bin/bash 
+                               yum install update -y 
+                               yum install httpd -y 
+                               service enable httpd
+                               service start httpd
+                               service status httpd
+                               yum -y install java
+                               java -version
+                               yum install wget unzip zip tar -y 
+                               mkdir /opt/tomcat/
+                               cd /opt/tomcat/
+                               tar -xvzf https://downloads.apache.org/tomcat/tomcat-8/v8.5.73/bin/apache-tomcat-8.5.73.zip.sha512
+                               mv apache-tomcat-8.5.73.zip.sha512 /opt/tomcat/tomcat8
+                               cd /opt/tomcat/tomcat8/bin/
+                               sh /opt/tomcat/tomcat8/bin/catalina.sh : sh /opt/tomcat/tomcat8/bin/startup.sh
+                               service status tomcat
+                               
+        image: ami-0d718c3d715cec4a7
+        vpc_subnet_id: subnet-077a2529660ce9370
+        assign_public_ip: True
